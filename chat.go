@@ -46,6 +46,8 @@ func main() {
 	store := cookie.NewStore([]byte(os.Getenv("session_secret")))
 	r.Use(sessions.Sessions("session", store))
 
+	r.Static("/static", "./static")
+
 	r.Any("/register", registerHandler)
 	r.Any("/login", loginHandler)
 	r.Any("/logout", logoutHandler)

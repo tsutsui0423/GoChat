@@ -1,60 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>リアルタイムチャット</title>
+    <link rel="stylesheet" href="/static/css/chat.css" />
   </head>
 
-  <style>
-    #messages {
-      text-align: left;
-      color: #ffffff;
-      background: #113131;
-      width: 400px;
-      min-height: 300px;
-      padding: 10px;
-      font-family: 'Lucida Grande', 'Hiragino Kaku Gothic ProN', 'ヒラギノ角ゴ ProN W3', 'Meiryo', 'メイリオ', sans-serif;
-      font-size: small;
-    }
-    .message {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 2px 0;
-    }
-    .delete-btn {
-      background: none;
-      border: none;
-      color: #e74c3c;
-      cursor: pointer;
-      font-size: 12px;
-      margin-left: 8px;
-      flex-shrink: 0;
-    }
-    #online-count {
-      color: #2ecc71;
-      font-weight: bold;
-      margin-bottom: 6px;
-    }
-    #typing-indicator {
-      color: #aaaaaa;
-      font-style: italic;
-      font-size: small;
-      min-height: 18px; /* 表示・非表示でレイアウトがずれないよう高さを確保 */
-      margin: 2px 0;
-    }
-  </style>
-
   <body>
-    <div>
-      <h3>リアルタイムチャット</h3>
-      <p id="online-count">オンライン: --人</p>
+    <div class="app">
+      <header>
+        <h1>リアルタイムチャット</h1>
+        <div class="header-right">
+          <span id="online-count">--人</span>
+          <a href="/logout">ログアウト</a>
+        </div>
+      </header>
+
       <div id="messages"></div>
-      <!-- タイピングインジケーター: 誰かが入力中の時だけ文字が表示される -->
       <p id="typing-indicator"></p>
-      <input placeholder="say something" id="text" type="text" />
-      <p><a href="/logout">ログアウト</a></p>
+
+      <form id="composer">
+        <input placeholder="メッセージを入力..." id="text" type="text" autocomplete="off" />
+        <button type="submit" id="send-btn" aria-label="送信">➤</button>
+      </form>
     </div>
 
     <script>
@@ -81,19 +50,36 @@
       // 2秒後に stopTyping を送るタイマー（キー入力のたびにリセットする）
       var typingTimer = null;
 
+      var messagesEl = document.getElementById("messages");
+
+      function scrollToBottom() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
       // メッセージをDOMに追加する関数
       // id: DBのメッセージID, content: 本文, userID: 送信者ID, username: 送信者名, createdAt: 投稿時刻
       function addMessage(id, content, userID, username, createdAt) {
+        var isMine = userID === currentUserID;
+
         var div = document.createElement("div");
-        div.className = "message";
+        div.className = "message " + (isMine ? "mine" : "theirs");
         div.setAttribute("data-id", id); // data-id属性にDBのIDを入れておく（削除時に特定するため）
 
-        var text = document.createElement("span");
-        text.innerText = createdAt + " [" + username + "] : " + content;
-        div.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "meta";
+        meta.innerText = (isMine ? "自分" : username) + " ・ " + createdAt;
+        div.appendChild(meta);
+
+        var row = document.createElement("div");
+        row.className = "bubble-row";
+
+        var bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerText = content;
+        row.appendChild(bubble);
 
         // 自分のメッセージにだけ削除ボタンを追加する
-        if (userID === currentUserID) {
+        if (isMine) {
           var btn = document.createElement("button");
           btn.className = "delete-btn";
           btn.innerText = "削除";
@@ -101,10 +87,12 @@
             // 削除リクエストをJSON形式でサーバーに送る
             ws.send(JSON.stringify({ type: "delete", id: id }));
           };
-          div.appendChild(btn);
+          row.appendChild(btn);
         }
 
-        document.getElementById("messages").appendChild(div);
+        div.appendChild(row);
+        messagesEl.appendChild(div);
+        scrollToBottom();
       }
 
       // サーバーからメッセージが届いた時の処理
@@ -117,8 +105,7 @@
           currentUserID = data.userID;
 
         } else if (data.type === "userCount") {
-          document.getElementById("online-count").innerText =
-            "オンライン: " + data.count + "人";
+          document.getElementById("online-count").innerText = data.count + "人";
 
         } else if (data.type === "chat") {
           // メッセージが届いたらその人のタイピング表示を消す（送信完了したから）
@@ -157,14 +144,15 @@
         }, 2000);
       });
 
-      text.addEventListener("keypress", function (e) {
-        if (e.key === "Enter" && text.value !== "") {
-          // Enter を押したら即座に stopTyping → タイマーが残っていてもキャンセル
-          clearTimeout(typingTimer);
-          ws.send(JSON.stringify({ type: "stopTyping" }));
-          ws.send(JSON.stringify({ type: "chat", content: text.value }));
-          text.value = "";
-        }
+      document.getElementById("composer").addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (text.value === "") return;
+
+        // 送信したら即座に stopTyping → タイマーが残っていてもキャンセル
+        clearTimeout(typingTimer);
+        ws.send(JSON.stringify({ type: "stopTyping" }));
+        ws.send(JSON.stringify({ type: "chat", content: text.value }));
+        text.value = "";
       });
     </script>
   </body>
